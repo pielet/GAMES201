@@ -1,11 +1,10 @@
 import taichi as ti
-import numpy as np
 from SPH import SPHSolver
 
 ti.init(arch=ti.gpu)
 
 # scene parameters
-screen_res = (500, 500)
+screen_res = (800, 800)
 n_dim = 2
 domain_size = (1, 1)
 
@@ -33,15 +32,14 @@ def render(gui, sim):
     gui.show()
 
 
-def main():
-    sim = SPHSolver(domain_size, n_dim, dt, smooth_length, alpha=viscosity_alpha, dampping=0.999)
+def test_SPH():
+    sim = SPHSolver(domain_size, n_dim, dt, smooth_length, alpha=viscosity_alpha, damping=0.999)
     sim.init_particles([0.25, 0.3], 50, 50, interval)
     gui = ti.GUI("WCSPH demo", screen_res)
     while gui.running and not gui.get_event(gui.ESCAPE):
         render(gui, sim)
-        #if gui.get_event('s'):
         sim.step()
 
 
 if __name__ == "__main__":
-    main()
+    test_SPH()

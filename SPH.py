@@ -2,13 +2,11 @@ import taichi as ti
 import numpy as np
 from math import pi
 
-ti.init(arch=ti.gpu)
-
 eps = 1e-6
 
 @ti.data_oriented
 class SPHSolver:
-    def __init__(self, domain_size, n_dim, dt, smooth_length, gravity=-9.8, rho_0=1000, alpha=0.1, dampping=0.9, gamma=7, cs=20):
+    def __init__(self, domain_size, n_dim, dt, smooth_length, gravity=-9.8, rho_0=1000, alpha=0.1, damping=0.9, gamma=7, cs=20):
         self.domain_size = domain_size
         self.n_dim = n_dim
         self.dt = dt
@@ -16,7 +14,7 @@ class SPHSolver:
         self.h = smooth_length
         self.rho_0 = rho_0
         self.alpha = alpha  # viscosity
-        self.dampping = dampping
+        self.damping = damping
         self.kernel_norm_factor = 40 / (7 * pi * self.h ** 2) if n_dim == 2 else 8 / (pi * self.h ** 3)
         self.gamma = gamma
         self.stiffness = rho_0 * cs * cs / gamma
@@ -48,9 +46,15 @@ class SPHSolver:
         self.grid_size = [int(x / self.cell_size) + 1 + 2 * y for x, y in zip(self.domain_size, self.grid_pad)]
 
         grid_offs = [-self.grid_pad[0], -self.grid_pad[1]]
+
+        # self.grid = ti.root.pointer(ti.ij, self.grid_size, offset=grid_offs)
+        # self.grid_2_particles = ti.field(ti.i32)
+        # self.grid.dynamic(ti.i, self.max_num_particles_per_cell).place(self.grid_2_particles)
+
         self.grid_2_particles = ti.field(dtype=ti.i32, shape=(*self.grid_size, self.max_num_particles_per_cell), offset=(*grid_offs, 0))
         self.grid_num_particle = ti.field(dtype=ti.i32, shape=self.grid_size, offset=grid_offs)
 
+        # self.particle_neighbors = ti.field(ti.i32)
         self.particle_neighbors = ti.field(dtype=ti.i32, shape=(self.n_fluid, self.max_num_neighbors))
         self.particle_num_neighbors = ti.field(dtype=ti.i32, shape=self.n_fluid)
 
@@ -84,15 +88,15 @@ class SPHSolver:
                     w_b2 += self.cubic_kernel(-pos)
 
         self.mass = self.rho_0 / (w_f + w_b1 + w_b2)
-        self.gamma_1 = (w_b2 / w_b1 + 1) * 2
-        self.gamma_2 = - np.dot(d_f, d_b1) / np.dot(d_b1, d_b1) * 2
-
+        gamma_multiplier = 2
+        self.gamma_1 = (w_b2 / w_b1 + 1) * gamma_multiplier
+        self.gamma_2 = - np.dot(d_f, d_b1) / np.dot(d_b1, d_b1) * gamma_multiplier
 
     @ti.kernel
     def init_fluid_particle(self, ox: ti.f32, oy: ti.f32, n_col: ti.i32, interval: ti.f32):
         for p_i in range(self.n_fluid):
             self.pos[p_i] = ti.Vector([ox + p_i // n_col * interval, oy + p_i % n_col * interval])  # FIXME: assuming 2d
-            self.vel[p_i] = ti.Vector([0.0] * self.n_dim)
+            self.vel[p_i] = ti.Vector([0.0, 0.0])
 
     @ti.kernel
     def init_boundary_particle(self, interval: ti.f32):  # FIXME: assuming 2d
@@ -211,7 +215,6 @@ class SPHSolver:
 
             self.vel[p_i] += self.dt * acc + self.alpha * visc
             self.pos[p_i] += self.dt * self.vel[p_i]
-
 
     def step(self):
         self.find_neighbors()
